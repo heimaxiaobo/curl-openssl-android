@@ -77,20 +77,6 @@ then
     build_openssl aarch64-linux-android android-arm64
     cd ${CURL_SRC_DIR}
     build_curl aarch64-linux-android
-
-elif [ "$ANDROID_ABI" == "x86" ]
-then
-    cd ${OPENSSL_SRC_DIR}
-    build_openssl i686-linux-android android-x86
-    cd ${CURL_SRC_DIR}
-    build_curl i686-linux-android
-
-elif [ "$ANDROID_ABI" == "x86_64" ]
-then
-    cd ${OPENSSL_SRC_DIR}
-    build_openssl x86_64-linux-android android-x86_64
-    cd ${CURL_SRC_DIR}
-    build_curl x86_64-linux-android
 else
     echo "Unsupported target ABI: $ANDROID_ABI"
     exit 1
