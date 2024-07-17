@@ -50,7 +50,7 @@ function build_curl() {
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
                 --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
-                --with-pic -shared
+                --with-pic --enable-shared
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install
