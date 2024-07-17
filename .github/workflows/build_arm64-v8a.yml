@@ -3,6 +3,7 @@ name: build curl+openssl arm64-v8a
 on:
   push:
     branches: [ master ]
+  workflow_dispatch:
 
 env:
   OPENSSL_VERSION: 3.3.1
