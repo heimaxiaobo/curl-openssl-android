@@ -50,7 +50,7 @@ function build_curl() {
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
-                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}/lib/libbo.so \
+                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}/lib/ \
                 --with-pic --enable-shared --enable-ipv6
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
