@@ -19,7 +19,7 @@ function build_openssl() {
     INSTALL_DIR=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
-    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-asm -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR}
+    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-asm -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -Wl,-soname,libbo.so
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
     #clean up
@@ -49,7 +49,7 @@ function build_curl() {
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
-                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
+                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}/libbo.so \
                 --with-pic --enable-shared --enable-ipv6
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
