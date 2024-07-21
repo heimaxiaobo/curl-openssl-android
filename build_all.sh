@@ -19,9 +19,10 @@ function build_openssl() {
     INSTALL_DIR=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
-    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-asm -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -Wl,-soname,libbo.so
+    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-asm -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR}
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
+    mv ${INSTALL_DIR}/lib/libssl.so ${INSTALL_DIR}/lib/libbo.so
     #clean up
     rm -rf ${OPENSSL_SRC_DIR}
     rm -rf ${INSTALL_DIR}/bin
