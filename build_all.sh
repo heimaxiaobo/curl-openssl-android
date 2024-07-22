@@ -1,4 +1,4 @@
-#!/bin/bash -e
+ #!/bin/bash -e
 
 # change our dir to where our script is, and then print pwd
 WORK_PATH=$(cd "$(dirname "$0")";pwd)
@@ -50,7 +50,7 @@ function build_curl() {
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
                 --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
-                --with-pic --enable-ipv6
+                --with-pic --enable-ipv6 --enable-http2
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install
