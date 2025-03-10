@@ -20,7 +20,7 @@ function build_openssl() {
     mkdir -p ${INSTALL_DIR}
     
     # 添加更多no-xxx选项和编译优化选项以减小libcrypto.so大小
-    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-idea no-camellia no-seed no-whirlpool no-md2 no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-bf no-cast no-dsa no-ripemd no-scrypt no-srp no-gost no-blake2 no-siphash no-poly1305 no-aria no-sm2 no-sm3 no-sm4 no-cms no-ts no-ocsp no-dgram no-sock no-srtp no-cmac no-ct no-async no-engine no-deprecated no-comp no-ssl3 no-dtls no-tls1 no-tls1_1 no-nextprotoneg no-psk no-srtp no-ec2m no-weak-ssl-ciphers no-ec no-ecdh no-ecdsa no-err no-filenames no-ui-console no-stdio no-autoload-config no-autoerrinit no-afalgeng no-apps no-asm no-legacy shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC
+    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-idea no-camellia no-seed no-whirlpool no-md2 no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-bf no-cast no-dsa no-ripemd no-scrypt no-srp no-gost no-blake2 no-siphash no-poly1305 no-aria no-sm2 no-sm3 no-sm4 no-cms no-ts no-ocsp no-dgram no-sock no-srtp no-cmac no-ct no-async no-engine no-deprecated no-comp no-ssl3 no-dtls no-nextprotoneg no-psk no-srtp no-ec2m no-weak-ssl-ciphers no-err no-filenames no-ui-console no-stdio no-autoload-config no-autoerrinit no-afalgeng no-apps no-asm no-legacy shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC -ffunction-sections -fdata-sections
     -ffunction-sections -fdata-sections
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
