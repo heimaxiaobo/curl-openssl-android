@@ -32,18 +32,7 @@ function build_openssl() {
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
     # Keep dynamic libraries but remove unnecessary files
     rm -rf ${INSTALL_DIR}/lib/ossl-modules
-    
-    # 额外的strip操作以减小库文件大小
-    find ${INSTALL_DIR}/lib -name "*.so*" -exec ${TOOLCHAIN}/bin/llvm-strip --strip-all {} \;
-    # 使用额外的优化选项重新链接以减小大小
-    for lib in ${INSTALL_DIR}/lib/*.so*; do
-        if [ -f "$lib" ] && [ ! -L "$lib" ]; then
-            ${TOOLCHAIN}/bin/${TARGET_HOST}${MIN_API}-clang -shared -fPIC -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,--strip-all,--exclude-libs,ALL -o "$lib.new" -Wl,--whole-archive "$lib" -Wl,--no-whole-archive
-            if [ -f "$lib.new" ]; then
-                mv "$lib.new" "$lib"
-            fi
-        fi
-    done
+
 }
 
 function build_curl() {
