@@ -35,6 +35,13 @@ jobs:
           aria2c https://dl.google.com/android/repository/android-ndk-${{env.ANDROID_NDK_VERSION}}-linux.zip
           unzip android-ndk-${{env.ANDROID_NDK_VERSION}}-linux.zip
           echo "status=success" >> $GITHUB_OUTPUT
+                
+      - name: 'Download ngtcp2'
+        id: download_ngtcp2
+        run: |
+          aria2c https://github.com/ngtcp2/ngtcp2/releases/download/v${{env.NGTCP2_VERSION}}/ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
+          tar -zxvf ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
+          echo "status=success" >> $GITHUB_OUTPUT
           
       - name: 'Download OpenSSL'
         id: download_openssl
@@ -55,13 +62,6 @@ jobs:
         run: |
           aria2c https://github.com/ngtcp2/nghttp3/releases/download/v${{env.NGHTTP3_VERSION}}/nghttp3-${{env.NGHTTP3_VERSION}}.tar.gz
           tar -zxvf nghttp3-${{env.NGHTTP3_VERSION}}.tar.gz
-          echo "status=success" >> $GITHUB_OUTPUT
-          
-      - name: 'Download ngtcp2'
-        id: download_ngtcp2
-        run: |
-          aria2c https://github.com/ngtcp2/ngtcp2/releases/download/v${{env.NGTCP2_VERSION}}/ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
-          tar -zxvf ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 'Compile Openssl & Curl with HTTP/3 support'
