@@ -26,7 +26,7 @@ function build_openssl() {
     # 修改OpenSSL编译选项，保留HTTP/3所需的加密算法
     ./Configure ${OPENSSL_ARCH} no-tests no-unit-test shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC \
     -ffunction-sections -fdata-sections \
-    enable-tls1_3 enable-ec enable-ecdh enable-ecdsa
+    enable-tls1_3 enable-ec enable-ecdh enable-ecdsa enable-quic
     
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
@@ -120,6 +120,7 @@ function build_curl() {
     mkdir -p ${INSTALL_DIR}
     
     # 添加HTTP/3支持的配置选项
+    # 确保正确设置交叉编译参数
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
@@ -138,7 +139,8 @@ function build_curl() {
                 --without-librtmp --without-libpsl \
                 --enable-shared --disable-static \
                 --build=x86_64-linux-gnu \
-                --with-cross-build
+                --with-cross-build \
+                --disable-shared-lib-undefined
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install
