@@ -47,7 +47,7 @@ jobs:
         id: download_openssl
         run: |
           aria2c https://github.com/quictls/quictls/archive/refs/tags/openssl-${{env.OPENSSL_VERSION}}.tar.gz
-          tar -zxvf openssl-${{env.OPENSSL_VERSION}}.tar.gz
+          tar -zxvf quictls-openssl-${{env.OPENSSL_VERSION}}.tar.gz
           echo "status=success" >> $GITHUB_OUTPUT
           
       - name: 'Download Curl'
