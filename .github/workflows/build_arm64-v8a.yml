@@ -8,8 +8,8 @@ on:
 env:
   OPENSSL_VERSION: 3.3.1
   CURL_VERSION: 8.8.0
+  NGHTTP3_VERSION: 1.2.0
   NGTCP2_VERSION: 1.4.0
-  NGHTTP3_VERSION: 1.0.0
   ANDROID_NDK_VERSION: r23c
   WORK_PATH: ${{github.workspace}}
   ANDROID_ABI: arm64-v8a
@@ -49,16 +49,32 @@ jobs:
           aria2c https://curl.se/download/curl-${{env.CURL_VERSION}}.tar.gz
           tar -zxvf curl-${{env.CURL_VERSION}}.tar.gz
           echo "status=success" >> $GITHUB_OUTPUT
+          
+      - name: 'Download nghttp3'
+        id: download_nghttp3
+        run: |
+          aria2c https://github.com/ngtcp2/nghttp3/releases/download/v${{env.NGHTTP3_VERSION}}/nghttp3-${{env.NGHTTP3_VERSION}}.tar.gz
+          tar -zxvf nghttp3-${{env.NGHTTP3_VERSION}}.tar.gz
+          echo "status=success" >> $GITHUB_OUTPUT
+          
+      - name: 'Download ngtcp2'
+        id: download_ngtcp2
+        run: |
+          aria2c https://github.com/ngtcp2/ngtcp2/releases/download/v${{env.NGTCP2_VERSION}}/ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
+          tar -zxvf ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz
+          echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: 'Compile Openssl & Curl'
+      - name: 'Compile Openssl & Curl with HTTP/3 support'
         id: compile
-        if: steps.download_ndk.outputs.status == 'success' && steps.download_openssl.outputs.status == 'success' && steps.download_curl.outputs.status == 'success' && !cancelled()
+        if: steps.download_ndk.outputs.status == 'success' && steps.download_openssl.outputs.status == 'success' && steps.download_curl.outputs.status == 'success' && steps.download_nghttp3.outputs.status == 'success' && steps.download_ngtcp2.outputs.status == 'success' && !cancelled()
         run: |
           bash ./build_all.sh
           echo "status=success" >> $GITHUB_OUTPUT
         env:
             OPENSSL_VERSION: ${{env.OPENSSL_VERSION}}
             CURL_VERSION: ${{env.CURL_VERSION}}
+            NGHTTP3_VERSION: ${{env.NGHTTP3_VERSION}}
+            NGTCP2_VERSION: ${{env.NGTCP2_VERSION}}
             ANDROID_NDK_VERSION: ${{env.ANDROID_NDK_VERSION}}
             WORK_PATH: ${{env.WORK_PATH}}
             ANDROID_ABI: ${{env.ANDROID_ABI}}
