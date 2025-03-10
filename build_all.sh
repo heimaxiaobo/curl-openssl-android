@@ -71,9 +71,6 @@ function build_curl() {
     rm -rf ${INSTALL_DIR}/bin
     rm -rf ${INSTALL_DIR}/share
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
-    
-    # Strip debug symbols to reduce file size
-    find ${INSTALL_DIR}/lib -name "*.so*" -exec ${STRIP} --strip-unneeded {} \;
 }
 
 
