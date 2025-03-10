@@ -1,4 +1,4 @@
- #!/bin/bash -e
+#!/bin/bash -e
 
 # change our dir to where our script is, and then print pwd
 WORK_PATH=$(cd "$(dirname "$0")";pwd)
@@ -19,7 +19,8 @@ function build_openssl() {
     INSTALL_DIR=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
-    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-idea no-camellia no-seed no-whirlpool no-md2 no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-bf no-cast no-des no-dsa no-ripemd no-scrypt no-srp no-gost no-blake2 no-siphash no-poly1305 no-aria no-sm2 no-sm3 no-sm4 no-cms no-ts no-ocsp no-dgram no-sock no-srtp no-cmac no-ct no-async no-engine no-deprecated shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC
+    # 添加更多no-xxx选项和编译优化选项以减小libcrypto.so大小
+    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-idea no-camellia no-seed no-whirlpool no-md2 no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-bf no-cast no-des no-dsa no-ripemd no-scrypt no-srp no-gost no-blake2 no-siphash no-poly1305 no-aria no-sm2 no-sm3 no-sm4 no-cms no-ts no-ocsp no-dgram no-sock no-srtp no-cmac no-ct no-async no-engine no-deprecated no-comp no-ssl3 no-dtls no-tls1 no-tls1_1 no-nextprotoneg no-psk no-srtp no-ec2m no-weak-ssl-ciphers no-ec no-ecdh no-ecdsa no-err no-filenames no-ui-console no-stdio no-autoload-config no-autoerrinit no-afalgeng no-apps no-asm no-legacy shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC -Os -ffunction-sections -fdata-sections
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
     #clean up
@@ -29,7 +30,20 @@ function build_openssl() {
     rm -rf ${INSTALL_DIR}/ssl
     rm -rf ${INSTALL_DIR}/lib/engines*
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
+    # Keep dynamic libraries but remove unnecessary files
     rm -rf ${INSTALL_DIR}/lib/ossl-modules
+    
+    # 额外的strip操作以减小库文件大小
+    find ${INSTALL_DIR}/lib -name "*.so*" -exec ${TOOLCHAIN}/bin/llvm-strip --strip-all {} \;
+    # 使用额外的优化选项重新链接以减小大小
+    for lib in ${INSTALL_DIR}/lib/*.so*; do
+        if [ -f "$lib" ] && [ ! -L "$lib" ]; then
+            ${TOOLCHAIN}/bin/${TARGET_HOST}${MIN_API}-clang -shared -fPIC -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,--strip-all,--exclude-libs,ALL -o "$lib.new" -Wl,--whole-archive "$lib" -Wl,--no-whole-archive
+            if [ -f "$lib.new" ]; then
+                mv "$lib.new" "$lib"
+            fi
+        fi
+    done
 }
 
 function build_curl() {
@@ -68,6 +82,9 @@ function build_curl() {
     rm -rf ${INSTALL_DIR}/bin
     rm -rf ${INSTALL_DIR}/share
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
+    
+    # Strip debug symbols to reduce file size
+    find ${INSTALL_DIR}/lib -name "*.so*" -exec ${STRIP} --strip-unneeded {} \;
 }
 
 
