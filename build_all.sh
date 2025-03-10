@@ -19,7 +19,7 @@ function build_openssl() {
     INSTALL_DIR=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
-    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC
+    ./Configure ${OPENSSL_ARCH} no-tests no-unit-test no-idea no-camellia no-seed no-whirlpool no-md2 no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-bf no-cast no-des no-dsa no-ripemd no-scrypt no-srp no-gost no-blake2 no-siphash no-poly1305 no-aria no-sm2 no-sm3 no-sm4 no-cms no-ts no-ocsp no-dgram no-sock no-srtp no-cmac no-ct no-async no-engine no-deprecated shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
     #clean up
@@ -50,7 +50,16 @@ function build_curl() {
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
                 --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
-                --with-pic --enable-ipv6 --enable-http2
+                --with-pic --enable-ipv6 --enable-http2 \
+                --disable-ldap --disable-ldaps --disable-manual --disable-libcurl-option \
+                --disable-rtsp --disable-dict --disable-telnet --disable-tftp --disable-pop3 \
+                --disable-imap --disable-smtp --disable-gopher --disable-smb \
+                --disable-mqtt --disable-manual --disable-unix-sockets \
+                --disable-verbose --disable-versioned-symbols \
+                --disable-ftp --disable-file --disable-netrc --disable-fsck-zero-pct \
+                --without-brotli --without-zlib --without-zstd --without-libidn2 \
+                --without-nghttp2 --without-librtmp --without-libpsl \
+                --enable-shared --disable-static
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install
