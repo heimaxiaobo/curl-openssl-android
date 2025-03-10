@@ -136,7 +136,9 @@ function build_curl() {
                 --disable-ftp --disable-file --disable-netrc --disable-fsck-zero-pct \
                 --without-brotli --without-zlib --without-zstd --without-libidn2 \
                 --without-librtmp --without-libpsl \
-                --enable-shared --disable-static
+                --enable-shared --disable-static \
+                --build=x86_64-linux-gnu \
+                --with-cross-build
 
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install
