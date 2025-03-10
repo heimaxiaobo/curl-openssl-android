@@ -153,28 +153,28 @@ function build_curl() {
 
 if [ "$ANDROID_ABI" == "armeabi-v7a" ]
 then
-    cd ${OPENSSL_SRC_DIR}
-    build_openssl armv7a-linux-androideabi android-arm
+    cd ${NGTCP2_SRC_DIR}
+    build_ngtcp2 armv7a-linux-androideabi
     
     cd ${NGHTTP3_SRC_DIR}
     build_nghttp3 armv7a-linux-androideabi
     
-    cd ${NGTCP2_SRC_DIR}
-    build_ngtcp2 armv7a-linux-androideabi
+    cd ${OPENSSL_SRC_DIR}
+    build_openssl armv7a-linux-androideabi android-arm
     
     cd ${CURL_SRC_DIR}
     build_curl armv7a-linux-androideabi
     
 elif [ "$ANDROID_ABI" == "arm64-v8a" ]
 then
-    cd ${OPENSSL_SRC_DIR}
-    build_openssl aarch64-linux-android android-arm64
+    cd ${NGTCP2_SRC_DIR}
+    build_ngtcp2 aarch64-linux-android
     
     cd ${NGHTTP3_SRC_DIR}
     build_nghttp3 aarch64-linux-android
     
-    cd ${NGTCP2_SRC_DIR}
-    build_ngtcp2 aarch64-linux-android
+    cd ${OPENSSL_SRC_DIR}
+    build_openssl aarch64-linux-android android-arm64
     
     cd ${CURL_SRC_DIR}
     build_curl aarch64-linux-android
