@@ -124,7 +124,7 @@ function build_curl() {
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
-                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
+                --with-openssl=${BUILD_DIR}/quictls-openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
                 --with-nghttp3=${BUILD_DIR}/nghttp3-${NGHTTP3_VERSION}/${ANDROID_ABI} \
                 --with-ngtcp2=${BUILD_DIR}/ngtcp2-${NGTCP2_VERSION}/${ANDROID_ABI} \
                 --with-pic --enable-ipv6 --enable-http2 \
