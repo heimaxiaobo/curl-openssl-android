@@ -5,7 +5,7 @@ WORK_PATH=$(cd "$(dirname "$0")";pwd)
 MIN_API=21
 HOST_TAG=linux-x86_64
 BUILD_DIR=${WORK_PATH}/build
-OPENSSL_SRC_DIR=${WORK_PATH}/openssl-${OPENSSL_VERSION}
+OPENSSL_SRC_DIR=${WORK_PATH}/quictls-openssl-${OPENSSL_VERSION}
 CURL_SRC_DIR=${WORK_PATH}/curl-${CURL_VERSION}
 
 # 设置HTTP/3相关源码目录
@@ -20,7 +20,7 @@ PATH=${TOOLCHAIN}/bin:$PATH
 function build_openssl() {
     TARGET_HOST=$1
     OPENSSL_ARCH=$2
-    INSTALL_DIR=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
+    INSTALL_DIR=${BUILD_DIR}/quictls-openssl-${OPENSSL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
     # 修改OpenSSL编译选项，保留HTTP/3所需的加密算法
@@ -91,7 +91,7 @@ function build_ngtcp2() {
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
-                --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
+                --with-openssl=${BUILD_DIR}/quictls-openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
                 --enable-lib-only \
                 --disable-shared \
                 --enable-static
