@@ -85,7 +85,7 @@ jobs:
           tar -zcvf curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build curl-${{env.CURL_VERSION}}
           tar -zcvf ngtcp2-${{env.NGTCP2_VERSION}}.tar.gz -C ${{env.WORK_PATH}}/build ngtcp2-${{env.NGTCP2_VERSION}}
           tar -zcvf nghttp3-${{env.NGHTTP3_VERSION}}.tar.gz -C ${{env.WORK_PATH}}/build nghttp3-${{env.NGHTTP3_VERSION}}
-          tar -zcvf quictls-openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build openssl-${{env.OPENSSL_VERSION}}
+          tar -zcvf quictls-openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build quictls-openssl-${{env.OPENSSL_VERSION}}
           echo "status=success" >> $GITHUB_OUTPUT
           
       - name: 'Upload zips to release'
@@ -97,7 +97,7 @@ jobs:
           tag_name: v${{env.CURL_VERSION}}-v${{env.OPENSSL_VERSION}}
           body: "* Curl used - v${{env.CURL_VERSION}}\n* OpenSSL used - v${{env.OPENSSL_VERSION}}"
           files: |
-            ${{env.WORK_PATH}}/openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
+            ${{env.WORK_PATH}}/quictls-openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/ngtcp2-${{env.NGTCP2_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/nghttp3-${{env.NGHTTP3_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
