@@ -1,6 +1,7 @@
 #!/bin/bash -e
 
-# change our dir to where our script is, and then print pwd
+# 功能: 初始化构建路径及通用配置
+# 说明: 将工作目录设为脚本所在目录，设置最低 API 等级与构建输出目录
 WORK_PATH=$(cd "$(dirname "$0")";pwd)
 MIN_API=21
 HOST_TAG=linux-x86_64
@@ -12,11 +13,22 @@ CURL_SRC_DIR=${WORK_PATH}/curl-${CURL_VERSION}
 NGHTTP3_SRC_DIR=${WORK_PATH}/nghttp3-${NGHTTP3_VERSION}
 NGTCP2_SRC_DIR=${WORK_PATH}/ngtcp2-${NGTCP2_VERSION}
 
+# 功能: 设置NDK版本与工具链路径
+# 说明: 若未在环境中指定 ANDROID_NDK_VERSION，则默认使用 r28c
+ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION:-r28c}
 export ANDROID_NDK_ROOT=${WORK_PATH}/android-ndk-${ANDROID_NDK_VERSION}
 TOOLCHAIN=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_TAG}
 PATH=${TOOLCHAIN}/bin:$PATH
 
 
+##
+## 函数: build_openssl
+## 作用: 编译并安装 OpenSSL 到指定 ABI 的目标安装目录
+## 参数:
+##   $1 TARGET_HOST   目标三元组前缀 (如 aarch64-linux-android)
+##   $2 OPENSSL_ARCH  OpenSSL配置目标 (如 android-arm64)
+## 说明: 保留HTTP/3相关所需加密算法，并仅安装软件部分（不含测试与工具）
+##
 function build_openssl() {
     TARGET_HOST=$1
     OPENSSL_ARCH=$2
@@ -40,6 +52,13 @@ function build_openssl() {
     rm -rf ${INSTALL_DIR}/lib/ossl-modules
 }
 
+##
+## 函数: build_nghttp3
+## 作用: 以静态库方式编译并安装 nghttp3（HTTP/3的HTTP库）
+## 参数:
+##   $1 TARGET_HOST   目标三元组前缀 (如 aarch64-linux-android)
+## 说明: 仅构建库，不构建共享库与可执行文件
+##
 function build_nghttp3() {
     export TARGET_HOST=$1
     export ANDROID_ARCH=${ANDROID_ABI}
@@ -72,6 +91,13 @@ function build_nghttp3() {
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
 }
 
+##
+## 函数: build_ngtcp2
+## 作用: 以静态库方式编译并安装 ngtcp2（HTTP/3所需的QUIC传输层库），并链接 OpenSSL
+## 参数:
+##   $1 TARGET_HOST   目标三元组前缀 (如 aarch64-linux-android)
+## 说明: 仅构建库，且通过 --with-openssl 指定 OpenSSL 路径
+##
 function build_ngtcp2() {
     export TARGET_HOST=$1
     export ANDROID_ARCH=${ANDROID_ABI}
@@ -105,6 +131,13 @@ function build_ngtcp2() {
     rm -rf ${INSTALL_DIR}/lib/pkgconfig
 }
 
+##
+## 函数: build_curl
+## 作用: 编译并安装 Curl，启用 HTTP/3 所需的 nghttp3 与 ngtcp2 支持，并链接 OpenSSL
+## 参数:
+##   $1 TARGET_HOST   目标三元组前缀 (如 aarch64-linux-android)
+## 说明: 精简禁用不需要的协议/特性，启用共享库（.so），关闭静态库
+##
 function build_curl() {
     export TARGET_HOST=$1
     export ANDROID_ARCH=${ANDROID_ABI}
