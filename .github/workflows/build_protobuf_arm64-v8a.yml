@@ -90,12 +90,16 @@ jobs:
             -DBUILD_SHARED_LIBS=ON \
             -Dprotobuf_BUILD_EXAMPLES=OFF \
             -Dprotobuf_ABSL_PROVIDER=none \
+            -Dprotobuf_WITH_ZLIB=OFF \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_INCLUDEDIR=include \
             -DCMAKE_INSTALL_LIBDIR=lib \
-            -DCMAKE_C_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2" \
-            -DCMAKE_CXX_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+            -DCMAKE_C_FLAGS="-Os -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -flto" \
+            -DCMAKE_CXX_FLAGS="-Os -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-debug" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -Wl,--strip-debug" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 
           echo "[INFO] 开始编译（Release）"
           cmake --build "$BUILD_DIR" --config Release -j"$(nproc)"
@@ -118,9 +122,77 @@ jobs:
           echo "[INFO] 构建产物校验通过"
           echo "status=success" >> $GITHUB_OUTPUT
 
+      # 体积测量（strip 前）
+      - name: 'Size report (before strip)'
+        id: size_before
+        if: steps.verify.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          LIB_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}/lib"
+          echo "[INFO] Strip 前大小："
+          ls -lh "$LIB_DIR" || true
+          pre_lite_size_bytes=""; pre_full_size_bytes=""
+          if [ -f "$LIB_DIR/libprotobuf-lite.so" ]; then pre_lite_size_bytes=$(stat -c %s "$LIB_DIR/libprotobuf-lite.so"); fi
+          if [ -f "$LIB_DIR/libprotobuf.so" ]; then pre_full_size_bytes=$(stat -c %s "$LIB_DIR/libprotobuf.so"); fi
+          echo "pre_lite_size_bytes=$pre_lite_size_bytes" >> $GITHUB_OUTPUT
+          echo "pre_full_size_bytes=$pre_full_size_bytes" >> $GITHUB_OUTPUT
+
+      # 使用 NDK 的 llvm-strip 去除调试符号/未用符号
+      - name: 'Strip libraries (llvm-strip)'
+        id: strip
+        if: steps.verify.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          export NDK_HOME="${{env.WORK_PATH}}/android-ndk-${{env.ANDROID_NDK_VERSION}}"
+          STRIP="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          LIB_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}/lib"
+          test -x "$STRIP" || { echo "[ERROR] 未找到 llvm-strip: $STRIP"; exit 1; }
+          for so in libprotobuf-lite.so libprotobuf.so; do
+            if [ -f "$LIB_DIR/$so" ]; then
+              echo "[INFO] Stripping $so"
+              "$STRIP" --strip-debug --strip-unneeded "$LIB_DIR/$so" || true
+            fi
+          done
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 体积测量（strip 后）
+      - name: 'Size report (after strip)'
+        id: size_after
+        if: steps.strip.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          LIB_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}/lib"
+          echo "[INFO] Strip 后大小："
+          ls -lh "$LIB_DIR" || true
+          post_lite_size_bytes=""; post_full_size_bytes=""
+          if [ -f "$LIB_DIR/libprotobuf-lite.so" ]; then post_lite_size_bytes=$(stat -c %s "$LIB_DIR/libprotobuf-lite.so"); fi
+          if [ -f "$LIB_DIR/libprotobuf.so" ]; then post_full_size_bytes=$(stat -c %s "$LIB_DIR/libprotobuf.so"); fi
+          echo "post_lite_size_bytes=$post_lite_size_bytes" >> $GITHUB_OUTPUT
+          echo "post_full_size_bytes=$post_full_size_bytes" >> $GITHUB_OUTPUT
+
+      # 符号完整性校验（确保核心 API 仍可用）
+      - name: 'Symbol sanity check'
+        id: symcheck
+        if: steps.size_after.outputs.post_lite_size_bytes != '' || steps.size_after.outputs.post_full_size_bytes != ''
+        run: |
+          set -e
+          export NDK_HOME="${{env.WORK_PATH}}/android-ndk-${{env.ANDROID_NDK_VERSION}}"
+          NM="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          LIB_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}/lib"
+          test -x "$NM" || { echo "[ERROR] 未找到 llvm-nm: $NM"; exit 1; }
+          if [ -f "$LIB_DIR/libprotobuf-lite.so" ]; then
+            echo "[INFO] 校验 libprotobuf-lite.so 关键符号"
+            "$NM" -D -C "$LIB_DIR/libprotobuf-lite.so" | grep -q "MessageLite::SerializeToString" || { echo "[ERROR] 缺少 MessageLite::SerializeToString，可能影响序列化功能"; exit 1; }
+          fi
+          if [ -f "$LIB_DIR/libprotobuf.so" ]; then
+            echo "[INFO] 校验 libprotobuf.so 关键符号"
+            "$NM" -D -C "$LIB_DIR/libprotobuf.so" | grep -q "DescriptorPool::FindMessageTypeByName" || { echo "[ERROR] 缺少 DescriptorPool::FindMessageTypeByName，可能影响反射/描述符功能"; exit 1; }
+          fi
+          echo "status=success" >> $GITHUB_OUTPUT
+
       - name: 'Generate tar-zip'
         id: ziptar
-        if: steps.verify.outputs.status == 'success' && !cancelled()
+        if: steps.symcheck.outputs.status == 'success' && !cancelled()
         run: |
           set -e
           echo "[INFO] 仅打包必要目录（lib/include），避免空包或冗余文件"
@@ -135,6 +207,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{env.PROTOBUF_VERSION}}-protobuf-${{env.ANDROID_ABI}}
-          body: "* Protobuf used - v${{env.PROTOBUF_VERSION}}\n* NDK used - ${{env.ANDROID_NDK_VERSION}}\n* ABI - ${{env.ANDROID_ABI}}"
+          body: "* Protobuf used - v${{env.PROTOBUF_VERSION}}\n* NDK used - ${{env.ANDROID_NDK_VERSION}}\n* ABI - ${{env.ANDROID_ABI}}\n\nSize Report (bytes):\n- lite: before=${{steps.size_before.outputs.pre_lite_size_bytes}} after=${{steps.size_after.outputs.post_lite_size_bytes}}\n- full: before=${{steps.size_before.outputs.pre_full_size_bytes}} after=${{steps.size_after.outputs.post_full_size_bytes}}\n\nBuild flags: -Os, -ffunction-sections/-fdata-sections, LTO, gc-sections, strip-debug, zlib OFF\nVerification: dynamic symbols checked (SerializeToString / FindMessageTypeByName)"
           files: |
             ${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
+
+      # 说明：
+      # 本工作流针对体积优化进行了如下处理：
+      # 1) 编译优化级别改为 -Os，并开启 LTO（CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON / -flto）。
+      # 2) 使用函数/数据分节并在链接时进行垃圾回收（--gc-sections）。
+      # 3) 禁用 zlib 依赖（protobuf_WITH_ZLIB=OFF），减少链接体积。
+      # 4) 使用 llvm-strip 去除调试符号与未用符号（--strip-debug/--strip-unneeded）。
+      # 5) 增加 strip 前/后体积测量，并在 Release 说明中记录结果，便于回归对比。
