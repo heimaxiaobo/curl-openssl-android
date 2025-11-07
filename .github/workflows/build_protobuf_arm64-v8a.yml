@@ -1,0 +1,130 @@
+name: build protobuf arm64-v8a
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+# 全局环境变量
+env:
+  PROTOBUF_VERSION: 3.19.4
+  ANDROID_NDK_VERSION: r28c
+  WORK_PATH: ${{github.workspace}}
+  ANDROID_ABI: arm64-v8a
+  ANDROID_PLATFORM: android-21 # 选择 21，兼容现代 NDK 与多数设备
+  DEBUG: 1
+
+permissions:
+  contents: write
+
+jobs:
+  compile_protobuf_arm64_v8a:
+    name: compile protobuf for arm64-v8a
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 'Install required tools (aria2/cmake/ninja)'
+        run: |
+          set -e
+          sudo apt -yqq update
+          sudo apt install -yqq aria2 cmake ninja-build
+          echo "[INFO] 基础工具安装完成: aria2, cmake, ninja"
+
+      - name: 'Download Android NDK'
+        id: download_ndk
+        run: |
+          set -e
+          echo "[INFO] 下载 Android NDK: ${{env.ANDROID_NDK_VERSION}}"
+          aria2c https://dl.google.com/android/repository/android-ndk-${{env.ANDROID_NDK_VERSION}}-linux.zip
+          unzip android-ndk-${{env.ANDROID_NDK_VERSION}}-linux.zip
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Download Protobuf sources (v${{env.PROTOBUF_VERSION}})'
+        id: download_protobuf
+        run: |
+          set -e
+          echo "[INFO] 下载 Protobuf 源码: v${{env.PROTOBUF_VERSION}}"
+          # 使用官方 Release 资源包（C++）
+          aria2c https://github.com/protocolbuffers/protobuf/releases/download/v${{env.PROTOBUF_VERSION}}/protobuf-cpp-${{env.PROTOBUF_VERSION}}.tar.gz
+          tar -zxvf protobuf-cpp-${{env.PROTOBUF_VERSION}}.tar.gz
+          # 解压后目录通常为 protobuf-${{env.PROTOBUF_VERSION}}
+          if [ ! -d "${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}" ]; then
+            echo "[ERROR] 未找到解压后的源码目录 protobuf-${{env.PROTOBUF_VERSION}}"; exit 1;
+          fi
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Configure & Build Protobuf (CMake+Ninja)'
+        id: build
+        if: steps.download_ndk.outputs.status == 'success' && steps.download_protobuf.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          # 设置 NDK 路径与关键环境变量
+          export NDK_HOME="${{env.WORK_PATH}}/android-ndk-${{env.ANDROID_NDK_VERSION}}"
+          export ANDROID_TOOLCHAIN_FILE="$NDK_HOME/build/cmake/android.toolchain.cmake"
+          echo "[INFO] NDK_HOME: $NDK_HOME"
+          echo "[INFO] 使用 CMake toolchain: $ANDROID_TOOLCHAIN_FILE"
+
+          SRC_DIR="${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}"
+          BUILD_DIR="${{env.WORK_PATH}}/protobuf-build-${{env.ANDROID_ABI}}"
+          INSTALL_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}"
+          mkdir -p "$BUILD_DIR" "$INSTALL_DIR"
+
+          echo "[INFO] CMake 配置阶段（目标 ABI: ${{env.ANDROID_ABI}} / 平台: ${{env.ANDROID_PLATFORM}}）"
+          cmake -G Ninja -S "$SRC_DIR" -B "$BUILD_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_TOOLCHAIN_FILE" \
+            -DANDROID_ABI="${{env.ANDROID_ABI}}" \
+            -DANDROID_PLATFORM="${{env.ANDROID_PLATFORM}}" \
+            -DANDROID_STL="c++_shared" \
+            -Dprotobuf_BUILD_TESTS=OFF \
+            -Dprotobuf_BUILD_PROTOC_BINARIES=OFF \
+            -Dprotobuf_BUILD_CONFORMANCE=OFF \
+            -Dprotobuf_BUILD_SHARED_LIBS=ON \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2" \
+            -DCMAKE_CXX_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+
+          echo "[INFO] 开始编译（Release）"
+          cmake --build "$BUILD_DIR" --config Release -j"$(nproc)"
+
+          echo "[INFO] 安装到: $INSTALL_DIR"
+          cmake --install "$BUILD_DIR" --prefix "$INSTALL_DIR"
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Verify build products'
+        id: verify
+        if: steps.build.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          echo "[INFO] 校验 Protobuf 构建产物（libprotobuf.so 或 libprotobuf-lite.so）"
+          LIB_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}/lib"
+          test -d "$LIB_DIR" || { echo "[ERROR] 缺少 lib 目录: $LIB_DIR"; exit 1; }
+          if [ ! -f "$LIB_DIR/libprotobuf.so" ] && [ ! -f "$LIB_DIR/libprotobuf-lite.so" ]; then
+            echo "[ERROR] 未找到 libprotobuf(.so) 或 libprotobuf-lite(.so)"; ls -al "$LIB_DIR"; exit 1;
+          fi
+          echo "[INFO] 构建产物校验通过"
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Generate tar-zip'
+        id: ziptar
+        if: steps.verify.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          echo "[INFO] 仅打包必要目录（lib/include），避免空包或冗余文件"
+          tar -zcvf protobuf-${{env.PROTOBUF_VERSION}}-${{env.ANDROID_ABI}}.tar.gz \
+            -C ${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}} lib include
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Upload zips to release'
+        if: steps.ziptar.outputs.status == 'success' && !cancelled()
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{env.PROTOBUF_VERSION}}-protobuf-${{env.ANDROID_ABI}}
+          body: "* Protobuf used - v${{env.PROTOBUF_VERSION}}\n* NDK used - ${{env.ANDROID_NDK_VERSION}}\n* ABI - ${{env.ANDROID_ABI}}"
+          files: |
+            ${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
