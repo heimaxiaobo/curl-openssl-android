@@ -8,6 +8,7 @@ on:
 env:
   OPENSSL_VERSION: 3.3.1
   CURL_VERSION: 8.8.0
+  NGHTTP2_VERSION: 1.60.0
   ANDROID_NDK_VERSION: r28c
   WORK_PATH: ${{github.workspace}}
   ANDROID_ABI: x86
@@ -50,15 +51,26 @@ jobs:
           tar -zxvf curl-${{env.CURL_VERSION}}.tar.gz
           echo "status=success" >> $GITHUB_OUTPUT
 
+      - name: 'Download nghttp2 (for HTTP/2)'
+        id: download_nghttp2
+        run: |
+          set -e
+          echo "[INFO] 下载 nghttp2 源码: v${{env.NGHTTP2_VERSION}}"
+          aria2c https://github.com/nghttp2/nghttp2/releases/download/v${{env.NGHTTP2_VERSION}}/nghttp2-${{env.NGHTTP2_VERSION}}.tar.gz
+          tar -zxvf nghttp2-${{env.NGHTTP2_VERSION}}.tar.gz
+          echo "status=success" >> $GITHUB_OUTPUT
+
       - name: 'Compile Openssl & Curl'
         id: compile
-        if: steps.download_ndk.outputs.status == 'success' && steps.download_openssl.outputs.status == 'success' && steps.download_curl.outputs.status == 'success' && !cancelled()
+        if: steps.download_ndk.outputs.status == 'success' && steps.download_openssl.outputs.status == 'success' && steps.download_curl.outputs.status == 'success' && steps.download_nghttp2.outputs.status == 'success' && !cancelled()
         run: |
+          # 开始执行统一构建脚本，已包含 nghttp2 的启用逻辑（当源码存在且版本设置时）
           bash ./build_all.sh
           echo "status=success" >> $GITHUB_OUTPUT
         env:
             OPENSSL_VERSION: ${{env.OPENSSL_VERSION}}
             CURL_VERSION: ${{env.CURL_VERSION}}
+            NGHTTP2_VERSION: ${{env.NGHTTP2_VERSION}}
             ANDROID_NDK_VERSION: ${{env.ANDROID_NDK_VERSION}}
             WORK_PATH: ${{env.WORK_PATH}}
             ANDROID_ABI: ${{env.ANDROID_ABI}}
@@ -90,6 +102,20 @@ jobs:
           tar -zcvf curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz \
             -C ${{env.WORK_PATH}}/build/curl-${{env.CURL_VERSION}}/${{env.ANDROID_ABI}} lib include
           echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Generate nghttp2 tar-zip (HTTP/2)'
+        id: ziptar_nghttp2
+        if: steps.verify.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          if [ -d "${{env.WORK_PATH}}/build/nghttp2-${{env.NGHTTP2_VERSION}}/${{env.ANDROID_ABI}}" ]; then
+            echo "[INFO] 打包 nghttp2: 仅包含 lib 与 include"
+            tar -zcvf nghttp2-${{env.NGHTTP2_VERSION}}-${{env.ANDROID_ABI}}.tar.gz \
+              -C ${{env.WORK_PATH}}/build/nghttp2-${{env.NGHTTP2_VERSION}}/${{env.ANDROID_ABI}} lib include
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "[WARN] 未找到 nghttp2 安装目录，跳过打包"
+          fi
 
       - name: 'Generate full-artifacts tar-zip (诊断包)'
         id: ziptar_full
@@ -126,3 +152,4 @@ jobs:
             ${{env.WORK_PATH}}/openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/full-artifacts-${{env.CURL_VERSION}}-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
+            ${{env.WORK_PATH}}/nghttp2-${{env.NGHTTP2_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
