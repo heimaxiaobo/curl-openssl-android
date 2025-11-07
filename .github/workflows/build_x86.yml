@@ -104,6 +104,13 @@ jobs:
           if [ -n "${NGTCP2_VERSION}" ] && [ -d "${{env.WORK_PATH}}/build/ngtcp2-${NGTCP2_VERSION}/${{env.ANDROID_ABI}}" ]; then
             ADDED_PATHS="${ADDED_PATHS} ngtcp2-${NGTCP2_VERSION}/${{env.ANDROID_ABI}}"
           fi
+          # 自动包含 nghttp2（不依赖 NGHTTP2_VERSION 环境变量），如存在版本目录则加入
+          for d in $(ls -d ${{env.WORK_PATH}}/build/nghttp2-* 2>/dev/null || true); do
+            base=$(basename "$d")
+            if [ -d "${{env.WORK_PATH}}/build/${base}/${{env.ANDROID_ABI}}" ]; then
+              ADDED_PATHS="${ADDED_PATHS} ${base}/${{env.ANDROID_ABI}}"
+            fi
+          done
           tar -zcvf full-artifacts-${{env.CURL_VERSION}}-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build ${ADDED_PATHS}
           echo "status=success" >> $GITHUB_OUTPUT
           

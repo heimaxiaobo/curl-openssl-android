@@ -19,6 +19,7 @@ ENABLE_HTTP3=${ENABLE_HTTP3:-0}
 # 设置HTTP/3相关源码目录
 NGHTTP3_SRC_DIR=${WORK_PATH}/nghttp3-${NGHTTP3_VERSION}
 NGTCP2_SRC_DIR=${WORK_PATH}/ngtcp2-${NGTCP2_VERSION}
+NGHTTP2_SRC_DIR=${WORK_PATH}/nghttp2-${NGHTTP2_VERSION}
 
 # 功能: 设置NDK版本与工具链路径
 # 说明: 若未在环境中指定 ANDROID_NDK_VERSION，则默认使用 r28c
@@ -158,6 +159,55 @@ function build_ngtcp2() {
 }
 
 ##
+## 函数: build_nghttp2
+## 作用: 以共享库方式编译并安装 nghttp2（HTTP/2 所需的库），供 Curl 链接使用
+## 参数:
+##   $1 TARGET_HOST   目标三元组前缀 (如 aarch64-linux-android)
+## 说明:
+## - 开启 --enable-lib-only，仅构建库本身，不编译可执行示例
+## - 启用共享库（.so），关闭静态库，便于在 Android 端以动态依赖方式加载
+## - 为了让 Curl 的 configure 能够顺利检测到 nghttp2，这里保留 lib/pkgconfig（不在此函数中清理）
+##
+function build_nghttp2() {
+    export TARGET_HOST=$1
+    export ANDROID_ARCH=${ANDROID_ABI}
+    export AR=${TOOLCHAIN}/bin/llvm-ar
+    export CC=${TOOLCHAIN}/bin/${TARGET_HOST}${MIN_API}-clang
+    export AS=${CC}
+    export CXX=${TOOLCHAIN}/bin/${TARGET_HOST}${MIN_API}-clang++
+    export LD=${TOOLCHAIN}/bin/ld
+    export RANLIB=${TOOLCHAIN}/bin/llvm-ranlib
+    export STRIP=${TOOLCHAIN}/bin/llvm-strip
+
+    INSTALL_DIR=${BUILD_DIR}/nghttp2-${NGHTTP2_VERSION}/${ANDROID_ABI}
+    mkdir -p ${INSTALL_DIR}
+
+    echo "[DEBUG] nghttp2 安装目录: ${INSTALL_DIR}"
+    autoreconf -fi || true
+    ./configure --host=${TARGET_HOST} \
+                --target=${TARGET_HOST} \
+                --prefix=${INSTALL_DIR} \
+                --enable-lib-only \
+                --enable-shared \
+                --disable-static
+
+    make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
+    make install
+
+    # 清理不必要目录（保留 lib/pkgconfig 以便 curl 检测）
+    rm -rf ${INSTALL_DIR}/bin
+    rm -rf ${INSTALL_DIR}/share
+
+    # 构建结果提示
+    if [ -f "${INSTALL_DIR}/lib/libnghttp2.so" ] || [ -f "${INSTALL_DIR}/lib/libnghttp2.a" ]; then
+        echo "[INFO] nghttp2 已安装到: ${INSTALL_DIR}"
+        ls -l "${INSTALL_DIR}/lib" || true
+    else
+        echo "[WARN] 未找到libnghttp2库，请检查nghttp2源代码与配置。"
+    fi
+}
+
+##
 ## 函数: build_curl
 ## 作用: 编译并安装 Curl，启用 HTTP/3 所需的 nghttp3 与 ngtcp2 支持，并链接 OpenSSL
 ## 参数:
@@ -195,6 +245,15 @@ function build_curl() {
         echo "[DEBUG] 已显式关闭HTTP/3 (ENABLE_HTTP3=${ENABLE_HTTP3})"
     fi
 
+    # 检测并启用 HTTP/2（若找到 nghttp2 安装路径则启用）
+    HTTP2_FLAGS=""
+    if [ -n "${NGHTTP2_VERSION}" ] && [ -d "${BUILD_DIR}/nghttp2-${NGHTTP2_VERSION}/${ANDROID_ABI}" ]; then
+        HTTP2_FLAGS="--with-nghttp2=${BUILD_DIR}/nghttp2-${NGHTTP2_VERSION}/${ANDROID_ABI}"
+        echo "[DEBUG] 启用HTTP/2，HTTP2_FLAGS: ${HTTP2_FLAGS}"
+    else
+        echo "[DEBUG] 未启用HTTP/2（未设置 NGHTTP2_VERSION 或未找到 nghttp2 安装目录）"
+    fi
+
     echo "[DEBUG] Curl 安装目录: ${INSTALL_DIR}"
     echo "[DEBUG] 将使用的编译器: CC=${CC}, CXX=${CXX}, AR=${AR}, RANLIB=${RANLIB}"
     echo "[DEBUG] Curl 配置选项即将执行"
@@ -202,8 +261,9 @@ function build_curl() {
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
                 --with-openssl=${BUILD_DIR}/openssl-${OPENSSL_VERSION}/${ANDROID_ABI} \
-                --with-pic --enable-ipv6 --enable-http2 \
+                --with-pic --enable-ipv6 \
                 ${HTTP3_FLAGS} \
+                ${HTTP2_FLAGS} \
                 --disable-ldap --disable-ldaps --disable-manual --disable-libcurl-option \
                 --disable-rtsp --disable-dict --disable-telnet --disable-tftp --disable-pop3 \
                 --disable-imap --disable-smtp --disable-gopher --disable-smb \
@@ -235,7 +295,7 @@ if [ "$ANDROID_ABI" == "armeabi-v7a" ]
 then
     cd ${OPENSSL_SRC_DIR}
     build_openssl armv7a-linux-androideabi android-arm
-    
+
     # 若开启HTTP/3且提供依赖，则构建之
     if [ "${ENABLE_HTTP3}" = "1" ]; then
         if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
@@ -247,7 +307,15 @@ then
             build_ngtcp2 armv7a-linux-androideabi
         fi
     fi
-    
+
+    # 若设置了 NGHTTP2_VERSION 且提供源码，则构建 nghttp2 以启用 HTTP/2
+    if [ -n "${NGHTTP2_VERSION}" ] && [ -d "${NGHTTP2_SRC_DIR}" ]; then
+        cd ${NGHTTP2_SRC_DIR}
+        build_nghttp2 armv7a-linux-androideabi
+    else
+        echo "[DEBUG] 跳过 nghttp2 构建（未设置 NGHTTP2_VERSION 或未找到源码目录）"
+    fi
+
     cd ${CURL_SRC_DIR}
     build_curl armv7a-linux-androideabi
     
@@ -255,7 +323,7 @@ elif [ "$ANDROID_ABI" == "arm64-v8a" ]
 then
     cd ${OPENSSL_SRC_DIR}
     build_openssl aarch64-linux-android android-arm64
-    
+
     # 若开启HTTP/3且提供依赖，则构建之
     if [ "${ENABLE_HTTP3}" = "1" ]; then
         if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
@@ -267,7 +335,15 @@ then
             build_ngtcp2 aarch64-linux-android
         fi
     fi
-    
+
+    # 若设置了 NGHTTP2_VERSION 且提供源码，则构建 nghttp2 以启用 HTTP/2
+    if [ -n "${NGHTTP2_VERSION}" ] && [ -d "${NGHTTP2_SRC_DIR}" ]; then
+        cd ${NGHTTP2_SRC_DIR}
+        build_nghttp2 aarch64-linux-android
+    else
+        echo "[DEBUG] 跳过 nghttp2 构建（未设置 NGHTTP2_VERSION 或未找到源码目录）"
+    fi
+
     cd ${CURL_SRC_DIR}
     build_curl aarch64-linux-android
 else
