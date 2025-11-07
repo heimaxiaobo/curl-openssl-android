@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -o pipefail
 
 # 功能: 初始化构建路径及通用配置
 # 说明: 将工作目录设为脚本所在目录，设置最低 API 等级与构建输出目录
@@ -8,6 +9,12 @@ HOST_TAG=linux-x86_64
 BUILD_DIR=${WORK_PATH}/build
 OPENSSL_SRC_DIR=${WORK_PATH}/openssl-${OPENSSL_VERSION}
 CURL_SRC_DIR=${WORK_PATH}/curl-${CURL_VERSION}
+
+# 调试与HTTP/3开关
+# DEBUG: 设置为1时输出更详细的调试信息（包括命令跟踪）
+# ENABLE_HTTP3: 设置为1时启用HTTP/3（默认关闭）
+DEBUG=${DEBUG:-1}
+ENABLE_HTTP3=${ENABLE_HTTP3:-0}
 
 # 设置HTTP/3相关源码目录
 NGHTTP3_SRC_DIR=${WORK_PATH}/nghttp3-${NGHTTP3_VERSION}
@@ -19,6 +26,24 @@ ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION:-r28c}
 export ANDROID_NDK_ROOT=${WORK_PATH}/android-ndk-${ANDROID_NDK_VERSION}
 TOOLCHAIN=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_TAG}
 PATH=${TOOLCHAIN}/bin:$PATH
+
+# 调试输出环境信息
+if [ "${DEBUG}" = "1" ]; then
+    set -x
+    echo "[DEBUG] 工作目录: ${WORK_PATH}"
+    echo "[DEBUG] 构建目录: ${BUILD_DIR}"
+    echo "[DEBUG] ANDROID_NDK_VERSION: ${ANDROID_NDK_VERSION}"
+    echo "[DEBUG] ANDROID_NDK_ROOT: ${ANDROID_NDK_ROOT}"
+    echo "[DEBUG] TOOLCHAIN: ${TOOLCHAIN}"
+    echo "[DEBUG] PATH: ${PATH}"
+    echo "[DEBUG] ANDROID_ABI: ${ANDROID_ABI}"
+    echo "[DEBUG] MIN_API: ${MIN_API}"
+    echo "[DEBUG] OPENSSL_VERSION: ${OPENSSL_VERSION}"
+    echo "[DEBUG] CURL_VERSION: ${CURL_VERSION}"
+    echo "[DEBUG] NGHTTP3_VERSION: ${NGHTTP3_VERSION}"
+    echo "[DEBUG] NGTCP2_VERSION: ${NGTCP2_VERSION}"
+    echo "[DEBUG] ENABLE_HTTP3: ${ENABLE_HTTP3}"
+fi
 
 
 ##
@@ -36,10 +61,11 @@ function build_openssl() {
     mkdir -p ${INSTALL_DIR}
     
     # 修改OpenSSL编译选项，保留HTTP/3所需的加密算法
+    echo "[DEBUG] OpenSSL Configure 目标: ${OPENSSL_ARCH}, 安装目录: ${INSTALL_DIR}"
     ./Configure ${OPENSSL_ARCH} no-tests no-unit-test shared -D__ANDROID_API__=${MIN_API} --prefix=${INSTALL_DIR} -fPIC \
     -ffunction-sections -fdata-sections \
     enable-tls1_3 enable-ec enable-ecdh enable-ecdsa
-    
+
     make -j$(($(getconf _NPROCESSORS_ONLN) + 1))
     make install_sw
     #clean up
@@ -152,16 +178,26 @@ function build_curl() {
     INSTALL_DIR=${BUILD_DIR}/curl-${CURL_VERSION}/${ANDROID_ABI}
     mkdir -p ${INSTALL_DIR}
     
-    # 添加HTTP/3支持的配置选项（若未提供nghttp3/ngtcp2版本或缺失其构建产物，则自动跳过HTTP/3）
+    # 显式关闭HTTP/3（仅当 ENABLE_HTTP3=1 且依赖存在时才启用）
     HTTP3_FLAGS=""
-    if [ -n "${NGHTTP3_VERSION}" ] && [ -n "${NGTCP2_VERSION}" ] \
-       && [ -d "${BUILD_DIR}/nghttp3-${NGHTTP3_VERSION}/${ANDROID_ABI}" ] \
-       && [ -d "${BUILD_DIR}/ngtcp2-${NGTCP2_VERSION}/${ANDROID_ABI}" ]; then
-        HTTP3_FLAGS="--with-nghttp3=${BUILD_DIR}/nghttp3-${NGHTTP3_VERSION}/${ANDROID_ABI} \
-                      --with-ngtcp2=${BUILD_DIR}/ngtcp2-${NGTCP2_VERSION}/${ANDROID_ABI} \
-                      --enable-alt-svc"
+    if [ "${ENABLE_HTTP3}" = "1" ]; then
+        if [ -n "${NGHTTP3_VERSION}" ] && [ -n "${NGTCP2_VERSION}" ] \
+           && [ -d "${BUILD_DIR}/nghttp3-${NGHTTP3_VERSION}/${ANDROID_ABI}" ] \
+           && [ -d "${BUILD_DIR}/ngtcp2-${NGTCP2_VERSION}/${ANDROID_ABI}" ]; then
+            HTTP3_FLAGS="--with-nghttp3=${BUILD_DIR}/nghttp3-${NGHTTP3_VERSION}/${ANDROID_ABI} \
+                          --with-ngtcp2=${BUILD_DIR}/ngtcp2-${NGTCP2_VERSION}/${ANDROID_ABI} \
+                          --enable-alt-svc"
+            echo "[DEBUG] 启用HTTP/3，HTTP3_FLAGS: ${HTTP3_FLAGS}"
+        else
+            echo "[DEBUG] ENABLE_HTTP3=1 但未找到nghttp3/ngtcp2依赖，跳过HTTP/3"
+        fi
+    else
+        echo "[DEBUG] 已显式关闭HTTP/3 (ENABLE_HTTP3=${ENABLE_HTTP3})"
     fi
 
+    echo "[DEBUG] Curl 安装目录: ${INSTALL_DIR}"
+    echo "[DEBUG] 将使用的编译器: CC=${CC}, CXX=${CXX}, AR=${AR}, RANLIB=${RANLIB}"
+    echo "[DEBUG] Curl 配置选项即将执行"
     ./configure --host=${TARGET_HOST} \
                 --target=${TARGET_HOST} \
                 --prefix=${INSTALL_DIR} \
@@ -173,7 +209,7 @@ function build_curl() {
                 --disable-imap --disable-smtp --disable-gopher --disable-smb \
                 --disable-mqtt --disable-manual --disable-unix-sockets \
                 --disable-verbose --disable-versioned-symbols \
-                --disable-ftp --disable-file --disable-netrc --disable-fsck-zero-pct \
+                --disable-ftp --disable-file --disable-netrc \
                 --without-brotli --without-zlib --without-zstd --without-libidn2 \
                 --without-librtmp --without-libpsl \
                 --enable-shared --disable-static
@@ -190,7 +226,7 @@ function build_curl() {
         echo "[INFO] curl 已安装到: ${INSTALL_DIR}"
         ls -l "${INSTALL_DIR}/lib" || true
     else
-        echo "[WARN] 未找到libcurl库，请检查配置与依赖（可能缺少nghttp3/ngtcp2或OpenSSL路径不正确）。"
+        echo "[WARN] 未找到libcurl库，请检查配置与依赖（可能缺少nghttp2/HTTP3或OpenSSL路径不正确）。"
     fi
 }
 
@@ -200,14 +236,16 @@ then
     cd ${OPENSSL_SRC_DIR}
     build_openssl armv7a-linux-androideabi android-arm
     
-    # 若提供HTTP/3依赖版本则构建之
-    if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
-        cd ${NGHTTP3_SRC_DIR}
-        build_nghttp3 armv7a-linux-androideabi
-    fi
-    if [ -n "${NGTCP2_VERSION}" ] && [ -d "${NGTCP2_SRC_DIR}" ]; then
-        cd ${NGTCP2_SRC_DIR}
-        build_ngtcp2 armv7a-linux-androideabi
+    # 若开启HTTP/3且提供依赖，则构建之
+    if [ "${ENABLE_HTTP3}" = "1" ]; then
+        if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
+            cd ${NGHTTP3_SRC_DIR}
+            build_nghttp3 armv7a-linux-androideabi
+        fi
+        if [ -n "${NGTCP2_VERSION}" ] && [ -d "${NGTCP2_SRC_DIR}" ]; then
+            cd ${NGTCP2_SRC_DIR}
+            build_ngtcp2 armv7a-linux-androideabi
+        fi
     fi
     
     cd ${CURL_SRC_DIR}
@@ -218,14 +256,16 @@ then
     cd ${OPENSSL_SRC_DIR}
     build_openssl aarch64-linux-android android-arm64
     
-    # 若提供HTTP/3依赖版本则构建之
-    if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
-        cd ${NGHTTP3_SRC_DIR}
-        build_nghttp3 aarch64-linux-android
-    fi
-    if [ -n "${NGTCP2_VERSION}" ] && [ -d "${NGTCP2_SRC_DIR}" ]; then
-        cd ${NGTCP2_SRC_DIR}
-        build_ngtcp2 aarch64-linux-android
+    # 若开启HTTP/3且提供依赖，则构建之
+    if [ "${ENABLE_HTTP3}" = "1" ]; then
+        if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${NGHTTP3_SRC_DIR}" ]; then
+            cd ${NGHTTP3_SRC_DIR}
+            build_nghttp3 aarch64-linux-android
+        fi
+        if [ -n "${NGTCP2_VERSION}" ] && [ -d "${NGTCP2_SRC_DIR}" ]; then
+            cd ${NGTCP2_SRC_DIR}
+            build_ngtcp2 aarch64-linux-android
+        fi
     fi
     
     cd ${CURL_SRC_DIR}
