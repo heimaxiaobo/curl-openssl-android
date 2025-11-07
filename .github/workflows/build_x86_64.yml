@@ -64,22 +64,58 @@ jobs:
             ANDROID_ABI: ${{env.ANDROID_ABI}}
             DEBUG: ${{env.DEBUG}}
             ENABLE_HTTP3: ${{env.ENABLE_HTTP3}}
+      
+      - name: 'Verify build products'
+        id: verify
+        if: steps.compile.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          echo "[INFO] 校验 OpenSSL/Curl 构建产物是否存在"
+          test -f "${{env.WORK_PATH}}/build/openssl-${{env.OPENSSL_VERSION}}/${{env.ANDROID_ABI}}/lib/libssl.so" || { echo "[ERROR] 缺少 libssl.so"; exit 1; }
+          test -f "${{env.WORK_PATH}}/build/openssl-${{env.OPENSSL_VERSION}}/${{env.ANDROID_ABI}}/lib/libcrypto.so" || { echo "[ERROR] 缺少 libcrypto.so"; exit 1; }
+          test -f "${{env.WORK_PATH}}/build/curl-${{env.CURL_VERSION}}/${{env.ANDROID_ABI}}/lib/libcurl.so" || { echo "[ERROR] 缺少 libcurl.so"; exit 1; }
+          echo "[INFO] 构建产物校验通过"
+          echo "status=success" >> $GITHUB_OUTPUT
         
       - name: 'Generate tar-zip'
         id: ziptar
+        if: steps.verify.outputs.status == 'success' && !cancelled()
         run: |
-          tar -zcvf curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build curl-${{env.CURL_VERSION}}
-          tar -zcvf openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build openssl-${{env.OPENSSL_VERSION}}
+          set -e
+          echo "[INFO] 仅打包必要目录（lib/include），避免空包或冗余文件"
+          # 打包 OpenSSL: 仅包含 lib 与 include
+          tar -zcvf openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz \
+            -C ${{env.WORK_PATH}}/build/openssl-${{env.OPENSSL_VERSION}}/${{env.ANDROID_ABI}} lib include
+          # 打包 Curl: 仅包含 lib 与 include
+          tar -zcvf curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz \
+            -C ${{env.WORK_PATH}}/build/curl-${{env.CURL_VERSION}}/${{env.ANDROID_ABI}} lib include
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 'Generate full-artifacts tar-zip (诊断包)'
+        id: ziptar_full
+        if: steps.verify.outputs.status == 'success' && !cancelled()
+        run: |
+          set -e
+          echo "[INFO] 生成完整构建产物诊断包：包含本 ABI 的所有安装输出（build/*/<abi>）"
+          ADDED_PATHS="openssl-${{env.OPENSSL_VERSION}}/${{env.ANDROID_ABI}} curl-${{env.CURL_VERSION}}/${{env.ANDROID_ABI}}"
+          if [ -n "${NGHTTP3_VERSION}" ] && [ -d "${{env.WORK_PATH}}/build/nghttp3-${NGHTTP3_VERSION}/${{env.ANDROID_ABI}}" ]; then
+            ADDED_PATHS="${ADDED_PATHS} nghttp3-${NGHTTP3_VERSION}/${{env.ANDROID_ABI}}"
+          fi
+          if [ -n "${NGTCP2_VERSION}" ] && [ -d "${{env.WORK_PATH}}/build/ngtcp2-${NGTCP2_VERSION}/${{env.ANDROID_ABI}}" ]; then
+            ADDED_PATHS="${ADDED_PATHS} ngtcp2-${NGTCP2_VERSION}/${{env.ANDROID_ABI}}"
+          fi
+          tar -zcvf full-artifacts-${{env.CURL_VERSION}}-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz -C ${{env.WORK_PATH}}/build ${ADDED_PATHS}
           echo "status=success" >> $GITHUB_OUTPUT
           
       - name: 'Upload zips to release'
-        if: steps.ziptar.outputs.status == 'success' && !cancelled()
+        if: steps.ziptar.outputs.status == 'success' && steps.ziptar_full.outputs.status == 'success' && !cancelled()
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{env.CURL_VERSION}}-v${{env.OPENSSL_VERSION}}
+          tag_name: v${{env.CURL_VERSION}}-v${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}
           body: "* Curl used - v${{env.CURL_VERSION}}\n* OpenSSL used - v${{env.OPENSSL_VERSION}}"
           files: |
             ${{env.WORK_PATH}}/openssl-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
             ${{env.WORK_PATH}}/curl-${{env.CURL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
+            ${{env.WORK_PATH}}/full-artifacts-${{env.CURL_VERSION}}-${{env.OPENSSL_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
