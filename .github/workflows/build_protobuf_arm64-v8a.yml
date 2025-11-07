@@ -82,7 +82,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_TOOLCHAIN_FILE" \
             -DANDROID_ABI="${{env.ANDROID_ABI}}" \
             -DANDROID_PLATFORM="${{env.ANDROID_PLATFORM}}" \
-            -DANDROID_STL="c++_shared" \
+            -DANDROID_STL="c++_static" \
             -Dprotobuf_BUILD_TESTS=OFF \
             -Dprotobuf_BUILD_PROTOC_BINARIES=OFF \
             -Dprotobuf_BUILD_CONFORMANCE=OFF \
@@ -207,7 +207,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{env.PROTOBUF_VERSION}}-protobuf-${{env.ANDROID_ABI}}
-          body: "* Protobuf used - v${{env.PROTOBUF_VERSION}}\n* NDK used - ${{env.ANDROID_NDK_VERSION}}\n* ABI - ${{env.ANDROID_ABI}}\n\nSize Report (bytes):\n- lite: before=${{steps.size_before.outputs.pre_lite_size_bytes}} after=${{steps.size_after.outputs.post_lite_size_bytes}}\n- full: before=${{steps.size_before.outputs.pre_full_size_bytes}} after=${{steps.size_after.outputs.post_full_size_bytes}}\n\nBuild flags: -Os, -ffunction-sections/-fdata-sections, LTO, gc-sections, strip-debug, zlib OFF\nVerification: dynamic symbols checked (SerializeToString / FindMessageTypeByName)"
+          body: "* Protobuf used - v${{env.PROTOBUF_VERSION}}\n* NDK used - ${{env.ANDROID_NDK_VERSION}}\n* ABI - ${{env.ANDROID_ABI}}\n\nSize Report (bytes):\n- lite: before=${{steps.size_before.outputs.pre_lite_size_bytes}} after=${{steps.size_after.outputs.post_lite_size_bytes}}\n- full: before=${{steps.size_before.outputs.pre_full_size_bytes}} after=${{steps.size_after.outputs.post_full_size_bytes}}\n\nBuild flags: -Os, -ffunction-sections/-fdata-sections, LTO, gc-sections, strip-debug, zlib OFF, ANDROID_STL=c++_static\nVerification: dynamic symbols checked (SerializeToString / FindMessageTypeByName)"
           files: |
             ${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}-${{env.ANDROID_ABI}}.tar.gz
 
@@ -218,3 +218,4 @@ jobs:
       # 3) 禁用 zlib 依赖（protobuf_WITH_ZLIB=OFF），减少链接体积。
       # 4) 使用 llvm-strip 去除调试符号与未用符号（--strip-debug/--strip-unneeded）。
       # 5) 增加 strip 前/后体积测量，并在 Release 说明中记录结果，便于回归对比。
+      # 6) 改为静态 C++ 运行时（ANDROID_STL=c++_static），消除对 libc++_shared.so 的运行时依赖，便于 APP 直接加载。
