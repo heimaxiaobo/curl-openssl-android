@@ -46,12 +46,15 @@ jobs:
         run: |
           set -e
           echo "[INFO] 下载 Protobuf 源码: v${{env.PROTOBUF_VERSION}}"
-          # 使用官方 Release 资源包（C++）
-          aria2c https://github.com/protocolbuffers/protobuf/releases/download/v${{env.PROTOBUF_VERSION}}/protobuf-cpp-${{env.PROTOBUF_VERSION}}.tar.gz
-          tar -zxvf protobuf-cpp-${{env.PROTOBUF_VERSION}}.tar.gz
+          # 使用 GitHub 源代码归档（包含顶层 CMakeLists.txt）
+          aria2c https://github.com/protocolbuffers/protobuf/archive/refs/tags/v${{env.PROTOBUF_VERSION}}.tar.gz
+          tar -zxvf v${{env.PROTOBUF_VERSION}}.tar.gz
           # 解压后目录通常为 protobuf-${{env.PROTOBUF_VERSION}}
           if [ ! -d "${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}" ]; then
-            echo "[ERROR] 未找到解压后的源码目录 protobuf-${{env.PROTOBUF_VERSION}}"; exit 1;
+            echo "[ERROR] 未找到解压后的源码目录 protobuf-${{env.PROTOBUF_VERSION}}"; ls -al; exit 1;
+          fi
+          if [ ! -f "${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}/CMakeLists.txt" ]; then
+            echo "[ERROR] 源码根目录缺少 CMakeLists.txt，无法使用 CMake 构建"; ls -al "${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}"; exit 1;
           fi
           echo "status=success" >> $GITHUB_OUTPUT
 
@@ -67,12 +70,14 @@ jobs:
           echo "[INFO] 使用 CMake toolchain: $ANDROID_TOOLCHAIN_FILE"
 
           SRC_DIR="${{env.WORK_PATH}}/protobuf-${{env.PROTOBUF_VERSION}}"
+          CMAKESRC_DIR="$SRC_DIR/cmake" # 3.19.4 的 CMakeLists.txt 位于 cmake/ 子目录
           BUILD_DIR="${{env.WORK_PATH}}/protobuf-build-${{env.ANDROID_ABI}}"
           INSTALL_DIR="${{env.WORK_PATH}}/build/protobuf-${{env.PROTOBUF_VERSION}}/${{env.ANDROID_ABI}}"
           mkdir -p "$BUILD_DIR" "$INSTALL_DIR"
+          test -f "$CMAKESRC_DIR/CMakeLists.txt" || { echo "[ERROR] 未找到 $CMAKESRC_DIR/CMakeLists.txt"; ls -al "$CMAKESRC_DIR"; exit 1; }
 
           echo "[INFO] CMake 配置阶段（目标 ABI: ${{env.ANDROID_ABI}} / 平台: ${{env.ANDROID_PLATFORM}}）"
-          cmake -G Ninja -S "$SRC_DIR" -B "$BUILD_DIR" \
+          cmake -G Ninja -S "$CMAKESRC_DIR" -B "$BUILD_DIR" \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_TOOLCHAIN_FILE" \
             -DANDROID_ABI="${{env.ANDROID_ABI}}" \
             -DANDROID_PLATFORM="${{env.ANDROID_PLATFORM}}" \
@@ -82,8 +87,12 @@ jobs:
             -Dprotobuf_BUILD_CONFORMANCE=OFF \
             -Dprotobuf_BUILD_SHARED_LIBS=ON \
             -DBUILD_SHARED_LIBS=ON \
+            -Dprotobuf_BUILD_EXAMPLES=OFF \
+            -Dprotobuf_ABSL_PROVIDER=none \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_INCLUDEDIR=include \
+            -DCMAKE_INSTALL_LIBDIR=lib \
             -DCMAKE_C_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2" \
             -DCMAKE_CXX_FLAGS="-O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2"
 
